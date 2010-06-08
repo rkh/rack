@@ -1,3 +1,4 @@
+require 'rubygems'
 require 'test/spec'
 
 require 'rack/builder'
@@ -6,6 +7,46 @@ require 'rack/showexceptions'
 require 'rack/auth/basic'
 
 context "Rack::Builder" do
+  specify "supports mapping" do
+    app = Rack::Builder.new do
+      map '/' do |env| 
+        run lambda { |env| [200, {}, ['root']] }
+      end
+      map '/sub' do
+        run lambda { |env| [200, {}, ['sub']] }
+      end
+    end.to_app
+    Rack::MockRequest.new(app).get("/").body.to_s.should.equal 'root'
+    Rack::MockRequest.new(app).get("/sub").body.to_s.should.equal 'sub'
+  end
+  
+  specify "doesnt dupe env even when mapping" do
+    class NothingMiddleware
+      def initialize(app)
+        @app = app
+      end
+      def call(env)
+        @@env = env
+        response = @app.call(env)
+        response
+      end
+      def self.env
+        @@env
+      end
+    end
+    app = Rack::Builder.new do
+      use NothingMiddleware
+      map '/' do |env| 
+        run lambda { |env| 
+          env['new_key'] = 'new_value'
+          [200, {}, ['root']] 
+        }
+      end
+    end.to_app
+    Rack::MockRequest.new(app).get("/").body.to_s.should.equal 'root'
+    NothingMiddleware.env['new_key'].should.equal 'new_value'
+  end
+  
   specify "chains apps by default" do
     app = Rack::Builder.new do
       use Rack::ShowExceptions
